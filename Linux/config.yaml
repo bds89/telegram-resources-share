@@ -1,4 +1,4 @@
-TOKEN: "Telegram_bot_token_from_bot_father"
+TOKEN: "Telegram bot token"
 PASSWORD: "12345678"
 SHARE_PATCH: "/home/bds89"
 LOG_LEVEL: INFO

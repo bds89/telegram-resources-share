@@ -46,7 +46,7 @@ class Message_with_keyboard:
 
 
 class User:
-    def __init__(self, id, name="?", surname="?", auth="?", tryn=0):
+    def __init__(self, id, name="?", surname="?", auth="GUEST", tryn=0):
         self.id = id
         self.name = name
         self.surname = surname
@@ -126,7 +126,7 @@ class User:
                 self.name = user[1]
                 self.surname = user[2]
                 self.auth = user[3]
-                self.notify = user[4]
+                self.tryn = user[4]
                 sqlite_connection.close()
                 return True
             else: 
@@ -479,7 +479,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = User(id=u.id)
     if user.load_from_db(): 
         context.user_data["user"] = user
-    else: user.auth = "GUEST"
+    else: 
+        user.auth = "GUEST"
+        user.name = u.first_name
+        user.surname = u.last_name
 
     if user.auth == "BLACK": return ConversationHandler.END
 
@@ -527,6 +530,7 @@ async def auth(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         else:
             logger.warning("User "+str(user.first_name)+" "+str(user.last_name)+": "+str(user.id)+" type wrong password")
             context.user_data["user"].tryn += 1
+            
             if context.user_data["user"].tryn > 4:
                 context.user_data["user"].auth = "BLACK"
                 context.user_data["user"].name = user.first_name
@@ -534,6 +538,9 @@ async def auth(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 context.user_data["user"].save_to_db()
                 logger.warning("User "+str(user.first_name)+" "+str(user.last_name)+": "+str(user.id)+" was banned")
                 return ConversationHandler.END
+            
+            else: 
+                context.user_data["user"].save_to_db()
 
             context.chat_data["last_message"] = await update.message.reply_text(
                 "⛔ Password is incorrect, please try again"
@@ -879,9 +886,9 @@ if __name__ == '__main__':
         # Add conversation handler
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler("start", start),
-                            CommandHandler("stop", cancel),
-                            CommandHandler("cancel", cancel),
-                            CommandHandler("logout", logout),
+                            CommandHandler("stop", start),
+                            CommandHandler("cancel", start),
+                            CommandHandler("logout", start),
                             CommandHandler("settings", go_to_settings),
                             CallbackQueryHandler(start, pattern='^')],
             states={
