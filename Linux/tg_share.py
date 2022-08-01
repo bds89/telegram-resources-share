@@ -1,4 +1,3 @@
-from email.policy import default
 import os, platform, time, sys, inspect, logging, yaml, re, sqlite3
 from telegram import __version__ as TG_VER
 try:
@@ -320,6 +319,9 @@ def obj_on_disk(patch, s):
         return objects
     objects.folders.sort()
     objects.files.sort()
+    if not objects.folders and not objects.files:
+        objects.folders.append(".emptyempty")
+        objects.files.append(".emptyempty")
     return objects
 
 def create_message(obj: Objects_in_folder, context: ContextTypes.DEFAULT_TYPE):
@@ -342,6 +344,9 @@ def create_message(obj: Objects_in_folder, context: ContextTypes.DEFAULT_TYPE):
         )
         return new_message
 
+    if ".emptyempty" in obj.folders and ".emptyempty" in obj.files:
+        obj.folders = []
+        obj.files = []
     symbols = context.user_data["settings"].symbols
     lvl1 = 0
     lvl2 = 0
@@ -461,7 +466,7 @@ def create_message(obj: Objects_in_folder, context: ContextTypes.DEFAULT_TYPE):
         ]
     )  
 
-    if not new_message.text: new_message.text = "🗑 Empty folder"
+    if not obj.folders and not obj.files: new_message.text = "🗑 Empty folder"
     return new_message
 
 
@@ -487,12 +492,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     context.user_data["user"] = user
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             "🔐 Please enter your password",
         )
     else:
         await update.callback_query.answer()
-        await update.callback_query.message.reply_text(
+        context.chat_data["last_message"] = await update.callback_query.message.reply_text(
             "🔐 Please enter your password",
         )
     return AUTH
@@ -530,7 +535,7 @@ async def auth(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 logger.warning("User "+str(user.first_name)+" "+str(user.last_name)+": "+str(user.id)+" was banned")
                 return ConversationHandler.END
 
-            await update.message.reply_text(
+            context.chat_data["last_message"] = await update.message.reply_text(
                 "⛔ Password is incorrect, please try again"
             )
             return AUTH
@@ -544,13 +549,13 @@ async def root(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.chat_data["patch"] = obj.patch
     context.chat_data["links"] = new_message.links
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
         )
     else:
         if update.callback_query.message.text != new_message.text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(new_message.keyboard):
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+            context.chat_data["last_message"] = await update.callback_query.edit_message_text(
                 new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
             )
         else: await update.callback_query.answer()
@@ -577,13 +582,13 @@ async def folder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.chat_data["links"] = new_message.links
 
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
         )
     else:
         if update.callback_query.message.text != new_message.text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(new_message.keyboard):
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+            context.chat_data["last_message"] = await update.callback_query.edit_message_text(
                 new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
             )
         else:
@@ -602,7 +607,7 @@ async def file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     else:
         await update.callback_query.answer()
         await update.callback_query.message.reply_document(open(CONFIG["SHARE_PATCH"]+file, 'rb'), write_timeout=30)
-        await update.callback_query.message.reply_text(
+        context.chat_data["last_message"] = await update.callback_query.message.reply_text(
             update.callback_query.message.text, reply_markup=update.callback_query.message.reply_markup, parse_mode="HTML"
         )
 
@@ -620,13 +625,13 @@ async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     new_message = create_message(obj, context)
 
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
         )
     else:
         if update.callback_query.message.text != new_message.text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(new_message.keyboard):
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+            context.chat_data["last_message"] = await update.callback_query.edit_message_text(
                 new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
             )
         else: await update.callback_query.answer()
@@ -635,13 +640,13 @@ async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def get_name_new_folder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             context.chat_data["patch"]+"\n\nEnter folder name", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠", callback_data="root")]]), parse_mode="HTML"
         )
     else:
         if update.callback_query.message.text != context.chat_data["patch"]+"\n\nEnter folder name" and update.callback_query.message.reply_markup != InlineKeyboardButton("🏠", callback_data="root"):
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+            context.chat_data["last_message"] = await update.callback_query.edit_message_text(
                 context.chat_data["patch"]+"\n\nEnter folder name", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠", callback_data="root")]]), parse_mode="HTML"
             )
         else: await update.callback_query.answer()
@@ -670,42 +675,52 @@ async def create_new_folder(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
         )
     else:
         if update.callback_query.message.text != new_message.text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(new_message.keyboard):
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+            context.chat_data["last_message"] = await update.callback_query.edit_message_text(
                 new_message.text, reply_markup=InlineKeyboardMarkup(new_message.keyboard), parse_mode="HTML"
             )
         else: await update.callback_query.answer()
 
     return ROOT
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE, end_point=False) -> int:
     """Cancels and ends the conversation."""
     if update.message: u = update.message.from_user
     else: u = update.callback_query.from_user
-    context.chat_data.clear
-    context.user_data.clear
+
     logger.info("User %s: %s canceled the conversation.", u.first_name, u.id)
 
     text = "🏁 Conversation is ended."
     keyboard = [[InlineKeyboardButton("🏠", callback_data="root")]]
-    if update.message:
-        await update.message.reply_text(
+    if end_point and context.chat_data["last_message"]:
+        await context.chat_data["last_message"].edit_text(
             text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
         )
     else:
-        if update.callback_query.message.text != text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(keyboard):
-            await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+        if update.message:
+            await update.message.reply_text(
                 text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
             )
-        else: await update.callback_query.answer()
+        else:
+            if update.callback_query.message.text != text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(keyboard):
+                await update.callback_query.answer()
+                await update.callback_query.edit_message_text(
+                    text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
+                )
+            else: 
+                await update.callback_query.answer()
 
+    context.chat_data.clear
+    context.user_data.clear
     return ConversationHandler.END
+
+async def timeout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await cancel(update, context, end_point=True)
 
 async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not update.message: return ConversationHandler.END
@@ -717,7 +732,7 @@ async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     else:
         user = User(id=u.id)
         user.save_to_db(params="auth")
-    await update.message.reply_text(
+    context.chat_data["last_message"] = await update.message.reply_text(
         "🏁 Bye!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏳 Start", callback_data="root")]])
     )
     return ConversationHandler.END
@@ -737,12 +752,12 @@ async def go_to_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     context.user_data["user"] = user
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             "First you need to login", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👤 Authorization", callback_data="auth")]])
         )
     else:
         await update.callback_query.answer()
-        await update.callback_query.message.reply_text(
+        context.chat_data["last_message"] = await update.callback_query.message.reply_text(
             "First you need to login", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👤 Authorization", callback_data="auth")]])
         )
     return ConversationHandler.END
@@ -761,13 +776,13 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                     InlineKeyboardButton("Buttons: %d"%settings.columns, callback_data="columns")],
                     [InlineKeyboardButton("🏠", callback_data="root")]]
     if update.message:
-        await update.message.reply_text(
+        context.chat_data["last_message"] = await update.message.reply_text(
             text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
         )
     else:
         if update.callback_query.message.text != text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(keyboard):
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+            context.chat_data["last_message"] = await update.callback_query.edit_message_text(
                 text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
             )
         else: await update.callback_query.answer()
@@ -792,7 +807,7 @@ async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
                     InlineKeyboardButton("🏠", callback_data="root")]]
     if update.callback_query.message.text != text and update.callback_query.message.reply_markup != InlineKeyboardMarkup(keyboard):
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
+        context.chat_data["last_message"] = await update.callback_query.edit_message_text(
             text, reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else: await update.callback_query.answer()
@@ -823,7 +838,7 @@ if __name__ == '__main__':
         time.sleep(2)
 
     else:
-        with open(CONFIG_PATCH) as f:
+        with open(CONFIG_PATCH, encoding='utf-8') as f:
             CONFIG = yaml.load(f.read(), Loader=yaml.FullLoader)
             
         # Enable logging
@@ -907,12 +922,8 @@ if __name__ == '__main__':
                             CommandHandler("settings", go_to_settings),
                             CallbackQueryHandler(root, pattern='^root$'),
                             CallbackQueryHandler(settings, pattern='^back_to_settings$'),],
-                ConversationHandler.TIMEOUT: [MessageHandler(filters.ALL, cancel),
-                                                CallbackQueryHandler(cancel, pattern='^'),
-                                                CommandHandler("stop", cancel),
-                                                CommandHandler("cancel", cancel),
-                                                CommandHandler("logout", cancel),
-                                                CommandHandler("settings", cancel),],
+                ConversationHandler.TIMEOUT: [MessageHandler(filters.ALL, timeout),
+                                                CallbackQueryHandler(timeout, pattern='^'),],
             },
             conversation_timeout = 300,
             fallbacks=[CommandHandler("cancel", cancel)],
